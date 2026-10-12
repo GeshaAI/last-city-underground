@@ -1,8 +1,15 @@
 name: Publish Pages
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'dist/**'
+      - 'LAST_CITY_v0.1.html'
+      - '.github/workflows/pages.yml'
 permissions:
   contents: read
+  pages: read
 concurrency:
   group: pages
   cancel-in-progress: false
