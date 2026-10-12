@@ -1,0 +1,8 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {createWorld,restore,serialize,step,applyMetalGift} from '../dist/engine.js';
+import {capacity} from '../dist/economy.js';
+const oldWorld=()=>{let s=createWorld(2);s.version=12;s.activeDistrict=10;s.cells=s.cells.filter(c=>c.x<60);delete s.metalGiftClaimed;delete s.metalGiftRemaining;return s;};
+test('existing v12 city gets exactly 200 metal once and retains every old room',()=>{let s=oldWorld(),oldCells=JSON.parse(JSON.stringify(s.cells)),metal=s.resources.metal,loaded=restore(serialize(s));assert.equal(loaded.resources.metal,metal+200);assert.equal(loaded.metalGiftClaimed,true);assert.equal(loaded.metalGiftRemaining,0);for(let c of oldCells)assert.deepEqual(loaded.cells[c.y*64+c.x],c);let reloaded=restore(serialize(loaded));assert.equal(reloaded.resources.metal,metal+200);assert.equal(reloaded.version,14);});
+test('full stock queues the bonus instead of losing it and deposits only freed capacity',()=>{let s=oldWorld();s.resources.metal=capacity(s);let loaded=restore(serialize(s));assert.equal(loaded.resources.metal,capacity(s));assert.equal(loaded.metalGiftRemaining,200);loaded.resources.metal-=60;assert.equal(applyMetalGift(loaded),60);assert.equal(loaded.metalGiftRemaining,140);let again=restore(serialize(loaded));assert.equal(again.metalGiftRemaining,140);again.resources.metal-=140;assert.equal(applyMetalGift(again),140);assert.equal(again.metalGiftRemaining,0);assert.equal(restore(serialize(again)).resources.metal,capacity(s));});
+test('new games do not receive repeated migration gifts',()=>{let s=createWorld(4),metal=s.resources.metal;assert.equal(restore(serialize(s)).resources.metal,metal);assert.equal(applyMetalGift(s),0);});
