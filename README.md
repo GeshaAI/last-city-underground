@@ -3,6 +3,7 @@
 Браузерная стратегия о строительстве подземных поселений. Сохранённая игровая версия **v0.2.20**; перенос инфраструктуры не меняет игровой код.
 
 - Действующая игра: https://last-city-underground.halejam.chatgpt.site
+- Независимая игра: https://geshaai.github.io/last-city-underground/
 - Исходники: https://github.com/GeshaAI/last-city-underground
 - Основная ветка: `main`. Неизменённый снимок: `backup/v0.2.20`, commit `5df174e45323bc4a9d2299dc16c80bd964e51c52`.
 - Начало работы другого разработчика: [HANDOFF.md](HANDOFF.md).
