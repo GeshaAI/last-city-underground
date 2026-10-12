@@ -1,6 +1,6 @@
 {
   "name": "last-city-underground",
-  "version": "0.2.20",
+  "version": "0.2.21",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",

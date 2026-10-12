@@ -98,4 +98,40 @@ export function drawMiniMap(g,s,width,height,cam=null,viewport=null){g.clearRect
 export function citizenRoute(p){return {from:p.routeStart||{x:p.x,y:p.y},to:p.target||{x:p.x,y:p.y},points:[{x:p.x,y:p.y},...p.path]};}
 function drawCitizenRoutes(g,s,zoom,selected){g.save();for(let p of s.people){if(p.health<=0)continue;let route=citizenRoute(p),color=p.task==='Отдых'?'#aeb4ff':p.job?'#ffc986':'#89ffe0';if(p.path.length){g.strokeStyle=p.id===selected?'#ffe27bcc':color+'55';g.lineWidth=(p.id===selected?2:1)/zoom;g.beginPath();for(let [i,n] of route.points.entries()){let x=(n.x+.5)*TW,y=(n.y+.75)*TH;i?g.lineTo(x,y):g.moveTo(x,y);}g.stroke();g.fillStyle=color;g.beginPath();g.arc((route.from.x+.5)*TW,(route.from.y+.75)*TH,2/zoom,0,7);g.fill();}let x=(p.x+.5)*TW,y=(p.y+.75)*TH;g.fillStyle=color;g.beginPath();g.arc(x,y,3/zoom,0,7);g.fill();g.strokeStyle='#102331';g.lineWidth=1/zoom;g.stroke();if(p.id===selected){g.font=`bold ${11/zoom}px system-ui`;g.textAlign='center';g.fillStyle='#fff2bf';g.fillText(p.name,x,y-7/zoom);}}g.restore();}
 
-export function drawTunnelWork(g,s,cam,site,project,t){if(!site)return;let x=cam.x+(site.x+.5)*TW*cam.z,y=cam.y+(site.y+.5)*TH*cam.z,w=Math.max(86,110*cam.z),h=Math.max(28,32*cam.z);let working=project&&s.people.some(p=>p.campaignProject===project.id&&p.task==='Прокладка тоннеля'&&!p.path.length&&Math.round(p.x)===site.x&&Math.round(p.y)===site.y);g.save();g.translate(x,y);if(project){let depth=project.progress/project.total;g.fillStyle='#030b13';g.strokeStyle='#c99e62';g.lineWidth=4;g.beginPath();g.roundRect(-w*.58,-h*.95,w*1.16,h*(1.15+depth*.8),[18,18,2,2]);g.fill();g.stroke();}g.fillStyle='#0b202ded';g.strokeStyle=project?'#ffc16b':'#92dbc7';g.lineWidth=2;g.beginPath();g.roundRect(-w/2,-h/2,w,h,5);g.fill();g.stroke();g.font='bold '+Math.max(11,12*cam.z)+'px system-ui';g.textAlign='center';g.fillStyle='#fff1cb';g.fillText(project?'ТОННЕЛЬ · '+Math.floor(project.progress/project.total*100)+'%':'ТОННЕЛЬ →',0,4,w-8);if(project){g.fillStyle='#473b2b';g.fillRect(-w/2,h/2+3,w,4);g.fillStyle='#ffc16b';g.fillRect(-w/2,h/2+3,w*project.progress/project.total,4);if(working)for(let k=0;k<8;k++){let f=(t*1.6+k*.17)%1;g.fillStyle='rgba(244,199,123,'+(1-f)+')';g.beginPath();g.arc(w/2+Math.sin(k*7)*f*20,h/2+f*24,1.5,0,7);g.fill();}}g.restore();}
+export function drawTunnelWork(g,s,cam,site,project,t){
+  if(!site)return;
+  const x=cam.x+(site.x+.5)*TW*cam.z,y=cam.y+(site.y+.5)*TH*cam.z;
+  const w=Math.max(86,110*cam.z),h=Math.max(28,32*cam.z);
+  const crew=project?s.people.filter(p=>p.campaignProject===project.id&&p.task==='Прокладка тоннеля'&&!p.path.length&&Math.round(p.x)===site.x&&Math.round(p.y)===site.y):[];
+  g.save();g.translate(x,y);
+  if(project){
+    const depth=Math.max(0,Math.min(1,project.progress/Math.max(1,project.total)));
+    g.fillStyle='#030b13';g.strokeStyle='#c99e62';g.lineWidth=4;
+    g.beginPath();g.roundRect(-w*.58,-h*.95,w*1.16,h*(1.15+depth*.8),[18,18,2,2]);g.fill();g.stroke();
+    // Draw an active miner in front of the tunnel mouth, not behind its overlay.
+    if(crew.length){
+      const bob=Math.sin(t*9)*2,px=w*.22,py=h*.22+bob;
+      g.save();g.translate(px,py);
+      g.strokeStyle='#f6bb65';g.lineWidth=Math.max(2,3*cam.z);g.lineCap='round';
+      g.beginPath();g.moveTo(-5,3);g.lineTo(-9,14);g.moveTo(4,3);g.lineTo(8,14);g.stroke();
+      g.fillStyle='#e4a73d';g.fillRect(-9,-13,18,19);
+      g.fillStyle='#f3c49b';g.beginPath();g.arc(0,-18,7,0,Math.PI*2);g.fill();
+      g.fillStyle='#f2d34f';g.beginPath();g.arc(0,-21,9,Math.PI,Math.PI*2);g.fill();
+      g.fillStyle='#fff4bb';g.fillRect(-3,-24,6,4);
+      const swing=Math.sin(t*8)*.65;
+      g.save();g.translate(7,-8);g.rotate(swing);
+      g.strokeStyle='#bfcdd1';g.lineWidth=3;g.beginPath();g.moveTo(0,0);g.lineTo(15,-13);g.stroke();
+      g.strokeStyle='#d7e4e8';g.lineWidth=4;g.beginPath();g.moveTo(8,-16);g.lineTo(20,-10);g.stroke();g.restore();
+      g.restore();
+      for(let k=0;k<7;k++){const f=(t*1.8+k*.21)%1;g.fillStyle='rgba(255,199,94,'+(1-f)+')';g.beginPath();g.arc(w*.49+Math.sin(k*7)*f*14,-h*.12+f*22,Math.max(1,2*cam.z)*(1-f*.5),0,Math.PI*2);g.fill();}
+    }
+  }
+  // Progress label has its own transform so mining sprites and sparks stay at the work face.
+  g.save();g.translate(0,-h*1.65);
+  g.fillStyle='#0b202ded';g.strokeStyle=project?'#ffc16b':'#92dbc7';g.lineWidth=2;
+  g.beginPath();g.roundRect(-w/2,-h/2,w,h,5);g.fill();g.stroke();
+  g.font='bold '+Math.max(11,12*cam.z)+'px system-ui';g.textAlign='center';g.fillStyle='#fff1cb';
+  g.fillText(project?'ТОННЕЛЬ · '+Math.floor(project.progress/Math.max(1,project.total)*100)+'%':'ТОННЕЛЬ →',0,4,w-8);
+  if(project){const depth=Math.max(0,Math.min(1,project.progress/Math.max(1,project.total)));g.fillStyle='#473b2b';g.fillRect(-w/2,h/2+3,w,4);g.fillStyle='#ffc16b';g.fillRect(-w/2,h/2+3,w*depth,4);}
+  g.restore();g.restore();
+}
