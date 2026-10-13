@@ -1,9 +1,10 @@
 import {BUILD,message,clearRoomAssignment,path,W,hub} from './engine.js';
+import {createCoolingSystem,startReactor,stepCooling} from './nuclear-cooling.js';
 export const RESOURCE_NAMES={food:'Пища',water:'Питьевая вода',energy:'Энергия',material:'Материалы',metal:'Металл',fuel:'Топливо',tools:'Инструменты',stone:'Порода',groundwater:'Подземная вода',ore:'Руда',gold:'Золото',uranium:'Уран',nuclearFuel:'Ядерное топливо',science:'Научные данные'};
 export const capacity=s=>250+s.cells.filter(c=>c.building==='storage').length*600;
 const autoTypes=['water','farm','quarry','drill','mine','smelter','goldMine','uraniumMine'];
-const passive=['home','storage','corridor','stairs'];
-export function recipe(s,c){switch(c.building){case 'goldMine':return {input:{goldDeposit:.18},output:{gold:.18}};case 'uraniumMine':return {input:{uraniumDeposit:.35},output:{uranium:.35}};case 'mine':return {input:{oreDeposit:.4},output:{ore:.4}};case 'smelter':return {input:{ore:.3,fuel:.06},output:{metal:.15}};case 'generator':return {input:{fuel:.12},output:{energy:5*(1+s.tech*.05)*(s.unlocks.includes('energy')?1.35:1)}};case 'water':return {input:{groundwater:.65},output:{water:.65}};case 'farm':return {input:{water:.2/3},output:{food:.7*(s.unlocks.includes('farming')?1.4:1)}};case 'drill':return {input:{deposit:.32*(s.unlocks.includes('drilling')?1.5:1)},output:{fuel:.32*(s.unlocks.includes('drilling')?1.5:1)}};case 'quarry':return {input:{stone:.4},output:{material:.25}};case 'workshop':return {input:{metal:.025},output:{tools:.05}};case 'lab':return {input:{metal:.005},output:{science:.06}};case 'med':return {input:{water:.03/3},output:{}};default:return {input:{},output:{}};}}
+const passive=['home','storage','corridor','stairs','nuclearReactor'];
+export function recipe(s,c){switch(c.building){case 'fuelFabricator':return {input:{uranium:0.6},output:{nuclearFuel:0.05}};case 'goldMine':return {input:{goldDeposit:.18},output:{gold:.18}};case 'uraniumMine':return {input:{uraniumDeposit:.35},output:{uranium:.35}};case 'mine':return {input:{oreDeposit:.4},output:{ore:.4}};case 'smelter':return {input:{ore:.3,fuel:.06},output:{metal:.15}};case 'generator':return {input:{fuel:.12},output:{energy:5*(1+s.tech*.05)*(s.unlocks.includes('energy')?1.35:1)}};case 'water':return {input:{groundwater:.65},output:{water:.65}};case 'farm':return {input:{water:.2/3},output:{food:.7*(s.unlocks.includes('farming')?1.4:1)}};case 'drill':return {input:{deposit:.32*(s.unlocks.includes('drilling')?1.5:1)},output:{fuel:.32*(s.unlocks.includes('drilling')?1.5:1)}};case 'quarry':return {input:{stone:.4},output:{material:.25}};case 'workshop':return {input:{metal:.025},output:{tools:.05}};case 'lab':return {input:{metal:.005},output:{science:.06}};case 'med':return {input:{water:.03/3},output:{}};default:return {input:{},output:{}};}}
 // Buffers are reserved portions of the shared stock, never extra resources.
 const supplyBufferCache=new WeakMap(),supplyPathCache=new WeakMap();
 export const supplyInputs={smelter:'ore',generator:'fuel',farm:'water',quarry:'stone',workshop:'metal',lab:'metal',med:'water'};
@@ -28,6 +29,22 @@ export function runEconomy(s,dt,operators,live,previous){if(s.supplyTime!==s.tim
 for(let c of s.cells)if(c.building)rooms[c.x+','+c.y]=baseReport(s,c);
 let valid=[...operators].filter(c=>c.building&&c.enabled!==false&&!passive.includes(c.building)&&!s.jobs.some(j=>j.type==='dismantle'&&j.x===c.x&&j.y===c.y));let demand=live.length*.08+valid.filter(c=>c.building!=='generator').reduce((sum,c)=>{let m=rooms[c.x+','+c.y],fraction=1;for(let [k,v] of Object.entries(m.input))fraction=Math.min(fraction,Math.max(0,inputStock(s,c,k)/(v*dt)));for(let [k,v] of Object.entries(m.output))fraction=Math.min(fraction,Math.max(0,(k==='science'?outputLimit(s,c,k,cap)-s.researchPoints:outputLimit(s,c,k,cap)-r[k])/(v*dt)));if(c.building==='med'&&!live.some(p=>p.health<100)||c.building==='radio'&&s.arrivals>=30)fraction=0;return sum+m.power*fraction;},0);let need=Math.max(0,cap-r.energy+dt*demand);
 for(let c of valid.filter(c=>c.building==='generator')){let m=rooms[c.x+','+c.y],eff=m.output.energy,amount=Math.min(need,Math.max(0,outputLimit(s,c,'energy',cap)-r.energy+dt*demand),dt*eff,inputStock(s,c,'fuel')*eff/.12);c.supply=c.supply||{};c.supply.fuel=Math.max(0,(c.supply.fuel||0)-amount*.12/eff);r.fuel-=amount*.12/eff;r.energy+=amount;need-=amount;metered(m,'input','fuel',amount*.12/eff);metered(m,'output','energy',amount);m.utilization=amount/(dt*eff);m.status=amount>0?'Работает':'Остановлено';m.reason=amount>0?(m.utilization<.999?'снижение мощности по потребности':''):r.fuel<=0?'нет топлива':inputStock(s,c,'fuel')<=0?'ожидает автоматическую доставку топлива':'энергии достаточно';}
+for(const reactor of s.cells.filter(c=>c.building==='nuclearReactor'&&c.enabled!==false)){
+ const pump=valid.find(c=>c.building==='coolingPump'&&c.feature==='coolingLake');
+ const lake=pump;
+ const key=reactor.x+','+reactor.y,m=rooms[key];
+ if(!lake){m.status='Остановлено';m.reason='нет действующей насосной станции у озера';continue;}
+ if(!reactor.cooling)reactor.cooling=createCoolingSystem(lake);
+ const ready=r.energy>=0.2*dt&&r.nuclearFuel>0;
+ if(reactor.cooling.reactorState==='offline'&&ready)startReactor(lake,reactor.cooling,{pumpPowered:true,pipeConnected:true,exchangerReady:true,operatorReady:true,fuelAvailable:r.nuclearFuel});
+ const outputNeed=Math.max(0,Math.min(12*dt,need,cap-r.energy));
+ const result=stepCooling(lake,reactor.cooling,{dt,powerRequested:outputNeed/dt,fuelAvailable:r.nuclearFuel/.025,pumpPowered:ready,pipeConnected:true,exchangerReady:true,operatorReady:true});
+ const produced=result.output,spent=produced*.025;
+ if(ready){r.energy-=.2*dt;metered(m,'input','energy',.2*dt);}
+ r.nuclearFuel=Math.max(0,r.nuclearFuel-spent);r.energy+=produced;need=Math.max(0,need-produced);
+ metered(m,'input','nuclearFuel',spent);metered(m,'output','energy',produced);
+ m.status=produced>0?'Работает':result.state==='scrammed'?'Аварийная остановка':'Остановлено';m.reason=result.state==='scrammed'?'защита реактора':!ready?'нет энергии насоса или ядерного топлива':produced===0?'энергии достаточно':'';m.utilization=produced/(12*dt);
+ }
 let lifePower=Math.min(r.energy,live.length*.08*dt);r.energy-=lifePower;add(consumption,'energy',lifePower/dt);
 for(let c of valid.filter(c=>c.building!=='generator')){let m=rooms[c.x+','+c.y],fraction=1,reason='';for(let [k,v] of Object.entries(m.input)){let stock=inputStock(s,c,k);let f=stock/(v*dt);if(f<fraction){fraction=Math.max(0,f);reason=k==='oreDeposit'?'руда исчерпана':k==='deposit'?'залежь исчерпана':k==='groundwater'?'подземная вода исчерпана':'не хватает '+RESOURCE_NAMES[k].toLowerCase();}}
 for(let [k,v] of Object.entries(m.output)){let headroom=k==='science'?outputLimit(s,c,k,cap)-s.researchPoints:outputLimit(s,c,k,cap)-r[k],f=headroom/(v*dt);if(f<fraction){fraction=Math.max(0,f);reason=c.productionTarget?'достигнут заданный запас':'запас '+RESOURCE_NAMES[k].toLowerCase()+' полон';}}
